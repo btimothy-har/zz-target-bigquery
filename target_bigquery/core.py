@@ -765,6 +765,9 @@ class SchemaTranslator:
         more flexible though the denormalization can only be said to be partial if a type is not
         resolved. Most of the time this is fine but for the sake of consistency, we default to v1.
         """
+
+        description = schema_property.get("description", None)
+
         if self.resolver_version == SchemaResolverVersion.V1:
             # This is the original resolver, which is used by the denormalized strategy
             if "anyOf" in schema_property and len(schema_property["anyOf"]) > 0:
@@ -779,7 +782,7 @@ class SchemaTranslator:
 
             if "array" in property_type:
                 if "items" not in schema_property:
-                    return SchemaField(name, "JSON", "REPEATED")
+                    return SchemaField(name, "JSON", "REPEATED", description=description)
                 items_schema: dict = schema_property["items"]
                 items_type = bigquery_type(
                     items_schema["type"], items_schema.get("format", None)
@@ -788,12 +791,12 @@ class SchemaTranslator:
                     return self._translate_record_to_bigquery_schema(
                         name, items_schema, "REPEATED"
                     )
-                return SchemaField(name, items_type, "REPEATED")
+                return SchemaField(name, items_type, "REPEATED", description=description)
             elif "object" in property_type:
                 return self._translate_record_to_bigquery_schema(name, schema_property)
             else:
                 result_type = bigquery_type(property_type, property_format)
-                return SchemaField(name, result_type, "NULLABLE")
+                return SchemaField(name, result_type, "NULLABLE", description=description)
         elif self.resolver_version == SchemaResolverVersion.V2:
             # This is the new resolver, which is far more lenient and falls back to JSON
             # if it doesn't know how to translate a property.
@@ -813,10 +816,10 @@ class SchemaTranslator:
                         "items" not in schema_property
                         or "type" not in schema_property["items"]
                     ):
-                        return SchemaField(name, "JSON", "REPEATED")
+                        return SchemaField(name, "JSON", "REPEATED", description=description)
                     items_schema: dict = schema_property["items"]
                     if "patternProperties" in items_schema:
-                        return SchemaField(name, "JSON", "REPEATED")
+                        return SchemaField(name, "JSON", "REPEATED", description=description)
                     items_type = bigquery_type(
                         items_schema["type"], items_schema.get("format", None)
                     )
@@ -824,24 +827,24 @@ class SchemaTranslator:
                         return self._translate_record_to_bigquery_schema(
                             name, items_schema, "REPEATED"
                         )
-                    return SchemaField(name, items_type, "REPEATED")
+                    return SchemaField(name, items_type, "REPEATED", description=description)
                 elif "object" in property_type:
                     if (
                         "properties" not in schema_property
                         or len(schema_property["properties"]) == 0
                         or "patternProperties" in schema_property
                     ):
-                        return SchemaField(name, "JSON", "NULLABLE")
+                        return SchemaField(name, "JSON", "NULLABLE", description=description)
                     return self._translate_record_to_bigquery_schema(
                         name, schema_property
                     )
                 else:
                     if "patternProperties" in schema_property:
-                        return SchemaField(name, "JSON", "NULLABLE")
+                        return SchemaField(name, "JSON", "NULLABLE", description=description)
                     result_type = bigquery_type(property_type, property_format)
-                    return SchemaField(name, result_type, "NULLABLE")
+                    return SchemaField(name, result_type, "NULLABLE", description=description)
             except Exception:
-                return SchemaField(name, "JSON", "NULLABLE")
+                return SchemaField(name, "JSON", "NULLABLE", description=description)
         else:
             raise ValueError(f"Invalid resolver version: {self.resolver_version}")
 
@@ -850,6 +853,7 @@ class SchemaTranslator:
     ) -> SchemaField:
         """Translate a JSON schema record into a BigQuery schema."""
         properties = list(schema_property.get("properties", {}).items())
+        description = schema_property.get("description", None)
 
         # If no properties defined, store as JSON instead of RECORD
         if len(properties) == 0:
@@ -859,7 +863,7 @@ class SchemaTranslator:
             self._jsonschema_property_to_bigquery_column(col, t)
             for col, t in properties
         ]
-        return SchemaField(name, "RECORD", mode, fields=fields)
+        return SchemaField(name, "RECORD", mode, fields=fields, description=description)
 
     def _bigquery_field_to_projection(
         self, field: SchemaField, path: str = "$", depth: int = 0, base: str = "data"
